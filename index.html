@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>암기 테스트</title>
+</head>
+<body>
+    <h1>암기 테스트</h1>
+    
+    <div>
+        <button id="fullMode" onclick="setMode('full')">전체 텍스트 암기</button>
+        <button id="blankMode" onclick="setMode('blank')">빈칸 채우기 암기</button>
+    </div>
+    
+    <div style="margin: 10px 0;">
+        <label>
+            <input type="checkbox" id="feedbackToggle" checked onchange="toggleFeedback()">
+            실시간 정답 피드백 보기
+        </label>
+    </div>
+    
+    <div>
+        <select id="textSelect" onchange="selectText()">
+            <option value="0">1</option>
+            <option value="1">8</option>
+        </select>
+    </div>
+    
+    <div id="originalText" style="background: #f0f0f0; padding: 20px; margin: 20px 0;"></div>
+    
+    <div id="testArea">
+        <div id="fullTest" style="display: none;">
+            <textarea id="userInput" rows="10" cols="80" placeholder="암기한 내용을 입력하세요" autocomplete="off"></textarea>
+            <div>실시간 정확도: <span id="liveAccuracy">0%</span></div>
+        </div>
+        
+        <div id="blankTest" style="display: none;">
+            <div id="blankContainer"></div>
+            <div>정확도: <span id="blankAccuracy">0%</span></div>
+        </div>
+    </div>
+    
+    <div>
+        <button onclick="startTest()">테스트 시작</button>
+        <button onclick="showAnswer()">정답 보기</button>
+        <button onclick="checkAnswer()">정답 확인</button>
+        <button onclick="resetTest()">다시하기</button>
+    </div>
+    
+    <div id="result"></div>
+
+    <script>
+        // 여기에 암기할 텍스트들을 미리 입력
+        const memorizeTexts = [
+            "강호애 병이 깁퍼 듁님의 누엇더니 관동 팔ㅂ'ㅣㄱ니에 방면을 맛디시니 어와 셩은이야 가디록 망극ㅎ'다 연츄문 드리ㄷ'라 경회 남문 ㅂ'라보며 하직고 믈너나니 옥졀이 알피'셧다 평구역 ㅁ'ㄹ을 ㄱ'라 흑슈로 도라드니 셤강은 어듸메오 티악이 여긔로다",
+            "원통골 ㄱ'ㄴ'ㄴ길로 ㅅ'ㅈ'봉을 ㅊ'자가니 그 알피' 너러바회 화룡쇠 되여셰라 천년노룡이 구비'구비' 서려이셔 듀야의 흘녀내여 창ㅎ'ㅣ예 니어시니 풍운을 언제어더 삼일우ㄹ'ㄹ 디련ㄴ'ㄴ다 음애예 이온플을 다살와 내여ㅅ'라"
+        ];
+        
+        let currentMode = 'full';
+        let currentTextIndex = 0;
+        let currentText = '';
+        let blanksData = [];
+        let feedbackEnabled = true;
+        
+        function setMode(mode) {
+            currentMode = mode;
+            document.getElementById('fullMode').style.backgroundColor = mode === 'full' ? '#4CAF50' : '';
+            document.getElementById('blankMode').style.backgroundColor = mode === 'blank' ? '#4CAF50' : '';
+        }
+        
+        function toggleFeedback() {
+            feedbackEnabled = document.getElementById('feedbackToggle').checked;
+            
+            // 현재 빈칸 채우기 모드에서 피드백이 꺼지면 모든 배경색 초기화
+            if (!feedbackEnabled && currentMode === 'blank') {
+                blanksData.forEach(blank => {
+                    const input = document.getElementById(blank.id);
+                    if (input) {
+                        input.style.backgroundColor = '';
+                    }
+                });
+            }
+            
+            // 피드백이 켜지면 즉시 업데이트
+            if (feedbackEnabled && currentMode === 'blank') {
+                updateBlankAccuracy();
+            }
+        }
+        
+        function selectText() {
+            currentTextIndex = parseInt(document.getElementById('textSelect').value);
+            currentText = memorizeTexts[currentTextIndex];
+            document.getElementById('originalText').innerText = currentText;
+        }
+        
+        function startTest() {
+            if (!currentText) {
+                currentText = memorizeTexts[0];
+                document.getElementById('originalText').innerText = currentText;
+            }
+            
+            document.getElementById('originalText').style.display = 'none';
+            
+            if (currentMode === 'full') {
+                startFullTest();
+            } else {
+                startBlankTest();
+            }
+        }
+        
+        function startFullTest() {
+            document.getElementById('fullTest').style.display = 'block';
+            document.getElementById('blankTest').style.display = 'none';
+            document.getElementById('userInput').value = '';
+            
+            // 실시간 정확도 체크
+            document.getElementById('userInput').addEventListener('input', updateLiveAccuracy);
+        }
+        
+        function startBlankTest() {
+            document.getElementById('fullTest').style.display = 'none';
+            document.getElementById('blankTest').style.display = 'block';
+            
+            const words = currentText.split(' ');
+            blanksData = [];
+            let html = '';
+            
+            for (let i = 0; i < words.length; i += 6) {
+                const chunk = words.slice(i, i + 6);
+                if (chunk.length < 3) {
+                    html += chunk.join(' ') + ' ';
+                    continue;
+                }
+                
+                const numBlanks = Math.min(chunk.length - 1, Math.random() > 0.5 ? 3 : 2);
+                const blankIndices = [];
+                
+                while (blankIndices.length < numBlanks) {
+                    const randomIndex = Math.floor(Math.random() * chunk.length);
+                    if (!blankIndices.includes(randomIndex)) {
+                        blankIndices.push(randomIndex);
+                    }
+                }
+                
+                chunk.forEach((word, index) => {
+                    if (blankIndices.includes(index)) {
+                        const inputId = `blank_${blanksData.length}`;
+                        html += `<input type="text" id="${inputId}" data-answer="${word}" oninput="updateBlankAccuracy()" autocomplete="off" style="border-bottom: 2px solid #333; margin: 5px; padding: 5px;"> `;
+                        blanksData.push({ id: inputId, answer: word });
+                    } else {
+                        html += word + ' ';
+                    }
+                });
+            }
+            
+            document.getElementById('blankContainer').innerHTML = html;
+        }
+        
+        function updateLiveAccuracy() {
+            const userText = document.getElementById('userInput').value;
+            const accuracy = calculateAccuracy(currentText, userText);
+            document.getElementById('liveAccuracy').innerText = accuracy.toFixed(1) + '%';
+        }
+        
+        function updateBlankAccuracy() {
+            let correct = 0;
+            let total = blanksData.length;
+            
+            blanksData.forEach(blank => {
+                const input = document.getElementById(blank.id);
+                const userAnswer = input.value.trim();
+                const correctAnswer = blank.answer;
+                
+                if (userAnswer === correctAnswer) {
+                    correct++;
+                    if (feedbackEnabled) {
+                        input.style.backgroundColor = '#c8e6c9';
+                    }
+                } else if (userAnswer === '') {
+                    if (feedbackEnabled) {
+                        input.style.backgroundColor = '';
+                    }
+                } else {
+                    if (feedbackEnabled) {
+                        input.style.backgroundColor = '#ffcdd2';
+                    }
+                }
+                
+                // 피드백이 비활성화되면 배경색 제거
+                if (!feedbackEnabled) {
+                    input.style.backgroundColor = '';
+                }
+            });
+            
+            const accuracy = total > 0 ? (correct / total) * 100 : 0;
+            document.getElementById('blankAccuracy').innerText = accuracy.toFixed(1) + '%';
+        }
+        
+        function calculateAccuracy(original, user) {
+            if (!original || !user) return 0;
+            
+            // 띄어쓰기 제거하고 비교
+            const originalText = original.replace(/\s+/g, '');
+            const userText = user.replace(/\s+/g, '');
+            
+            if (originalText.length === 0) return 0;
+            if (userText.length === 0) return 0;
+            
+            // 동적 프로그래밍을 사용한 편집 거리 기반 유사도 계산
+            const dp = Array(userText.length + 1).fill(null).map(() => Array(originalText.length + 1).fill(0));
+            
+            // 초기화
+            for (let i = 0; i <= userText.length; i++) {
+                dp[i][0] = i;
+            }
+            for (let j = 0; j <= originalText.length; j++) {
+                dp[0][j] = j;
+            }
+            
+            // DP 테이블 채우기
+            for (let i = 1; i <= userText.length; i++) {
+                for (let j = 1; j <= originalText.length; j++) {
+                    if (userText[i-1] === originalText[j-1]) {
+                        dp[i][j] = dp[i-1][j-1];
+                    } else {
+                        dp[i][j] = Math.min(
+                            dp[i-1][j] + 1,     // 삭제
+                            dp[i][j-1] + 1,     // 삽입
+                            dp[i-1][j-1] + 1    // 교체
+                        );
+                    }
+                }
+            }
+            
+            // 편집 거리를 유사도로 변환
+            const editDistance = dp[userText.length][originalText.length];
+            const maxLength = Math.max(originalText.length, userText.length);
+            const similarity = Math.max(0, (maxLength - editDistance) / maxLength);
+            
+            return similarity * 100;
+        }
+        
+        function checkAnswer() {
+            // 정답 확인 시 피드백 자동으로 켜기
+            if (!feedbackEnabled) {
+                feedbackEnabled = true;
+                document.getElementById('feedbackToggle').checked = true;
+            }
+            
+            let accuracy = 0;
+            let result = '';
+            
+            if (currentMode === 'full') {
+                const userText = document.getElementById('userInput').value;
+                accuracy = calculateAccuracy(currentText, userText);
+                result = `정확도: ${accuracy.toFixed(1)}%`;
+            } else {
+                let correct = 0;
+                
+                // 정답 확인 버튼을 눌렀을 때는 항상 피드백 표시
+                blanksData.forEach(blank => {
+                    const input = document.getElementById(blank.id);
+                    const userAnswer = input.value.trim();
+                    const correctAnswer = blank.answer;
+                    
+                    if (userAnswer === correctAnswer) {
+                        correct++;
+                        input.style.backgroundColor = '#c8e6c9';
+                    } else if (userAnswer === '') {
+                        input.style.backgroundColor = '#fffacd';
+                    } else {
+                        input.style.backgroundColor = '#ffcdd2';
+                    }
+                });
+                
+                accuracy = (correct / blanksData.length) * 100;
+                result = `정답: ${correct}/${blanksData.length} (${accuracy.toFixed(1)}%)`;
+            }
+            
+            document.getElementById('result').innerHTML = `<h3>${result}</h3>`;
+        }
+        
+        function showAnswer() {
+            document.getElementById('originalText').style.display = 'block';
+        }
+        
+        function resetTest() {
+            document.getElementById('originalText').style.display = 'block';
+            document.getElementById('fullTest').style.display = 'none';
+            document.getElementById('blankTest').style.display = 'none';
+            document.getElementById('result').innerHTML = '';
+        }
+        
+        // 초기 설정
+        setMode('full');
+        selectText();
+    </script>
+</body>
+</html>
