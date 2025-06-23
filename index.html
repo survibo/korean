@@ -4,6 +4,28 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>암기 테스트</title>
+    <style>
+        .correct { background-color: #c8e6c9; }
+        .incorrect { background-color: #ffcdd2; }
+        .missing { background-color: #fffacd; }
+        .extra { background-color: #f8bbd9; }
+        .diff-container { 
+            background: #f9f9f9; 
+            padding: 20px; 
+            margin: 20px 0; 
+            border: 1px solid #ddd; 
+            max-height: 300px; 
+            overflow-y: auto;
+        }
+        .legend {
+            margin: 10px 0;
+            font-size: 14px;
+        }
+        .legend span {
+            padding: 2px 8px;
+            margin-right: 10px;
+        }
+    </style>
 </head>
 <body>
     <h1>암기 테스트</h1>
@@ -49,6 +71,17 @@
     </div>
     
     <div id="result"></div>
+    
+    <div id="diffResult" style="display: none;">
+        <h3>틀린 부분 상세 분석</h3>
+        <div class="legend">
+            <span class="correct">정답</span>
+            <span class="incorrect">틀림</span>
+            <span class="missing">누락</span>
+            <span class="extra">추가</span>
+        </div>
+        <div id="diffContainer" class="diff-container"></div>
+    </div>
 
     <script>
         // 여기에 암기할 텍스트들을 미리 입력
@@ -67,6 +100,7 @@
             currentMode = mode;
             document.getElementById('fullMode').style.backgroundColor = mode === 'full' ? '#4CAF50' : '';
             document.getElementById('blankMode').style.backgroundColor = mode === 'blank' ? '#4CAF50' : '';
+            document.getElementById('diffResult').style.display = 'none';
         }
         
         function toggleFeedback() {
@@ -82,6 +116,11 @@
                 });
             }
             
+            // 전체 텍스트 모드에서 피드백 상태에 따라 정확도 업데이트
+            if (currentMode === 'full') {
+                updateLiveAccuracy();
+            }
+            
             // 피드백이 켜지면 즉시 업데이트
             if (feedbackEnabled && currentMode === 'blank') {
                 updateBlankAccuracy();
@@ -92,6 +131,7 @@
             currentTextIndex = parseInt(document.getElementById('textSelect').value);
             currentText = memorizeTexts[currentTextIndex];
             document.getElementById('originalText').innerText = currentText;
+            document.getElementById('diffResult').style.display = 'none';
         }
         
         function startTest() {
@@ -101,6 +141,7 @@
             }
             
             document.getElementById('originalText').style.display = 'none';
+            document.getElementById('diffResult').style.display = 'none';
             
             if (currentMode === 'full') {
                 startFullTest();
@@ -113,6 +154,7 @@
             document.getElementById('fullTest').style.display = 'block';
             document.getElementById('blankTest').style.display = 'none';
             document.getElementById('userInput').value = '';
+            document.getElementById('liveAccuracy').innerText = '0%';
             
             // 실시간 정확도 체크
             document.getElementById('userInput').addEventListener('input', updateLiveAccuracy);
@@ -158,6 +200,11 @@
         }
         
         function updateLiveAccuracy() {
+            if (!feedbackEnabled) {
+                document.getElementById('liveAccuracy').innerText = '-';
+                return;
+            }
+            
             const userText = document.getElementById('userInput').value;
             const accuracy = calculateAccuracy(currentText, userText);
             document.getElementById('liveAccuracy').innerText = accuracy.toFixed(1) + '%';
@@ -241,6 +288,116 @@
             return similarity * 100;
         }
         
+        function generateDiff(original, user) {
+            const originalChars = original.split('');
+            const userChars = user.split('');
+            
+            // DP 테이블 생성
+            const dp = Array(userChars.length + 1).fill(null).map(() => Array(originalChars.length + 1).fill(0));
+            
+            // 초기화
+            for (let i = 0; i <= userChars.length; i++) {
+                dp[i][0] = i;
+            }
+            for (let j = 0; j <= originalChars.length; j++) {
+                dp[0][j] = j;
+            }
+            
+            // DP 테이블 채우기
+            for (let i = 1; i <= userChars.length; i++) {
+                for (let j = 1; j <= originalChars.length; j++) {
+                    if (userChars[i-1] === originalChars[j-1]) {
+                        dp[i][j] = dp[i-1][j-1];
+                    } else {
+                        dp[i][j] = Math.min(
+                            dp[i-1][j] + 1,     // 삭제
+                            dp[i][j-1] + 1,     // 삽입
+                            dp[i-1][j-1] + 1    // 교체
+                        );
+                    }
+                }
+            }
+            
+            // 역추적으로 diff 생성
+            let i = userChars.length;
+            let j = originalChars.length;
+            let result = [];
+            
+            while (i > 0 || j > 0) {
+                if (i > 0 && j > 0 && userChars[i-1] === originalChars[j-1]) {
+                    // 일치
+                    result.unshift({type: 'correct', char: originalChars[j-1]});
+                    i--;
+                    j--;
+                } else if (i > 0 && j > 0 && dp[i][j] === dp[i-1][j-1] + 1) {
+                    // 교체
+                    result.unshift({type: 'incorrect', original: originalChars[j-1], user: userChars[i-1]});
+                    i--;
+                    j--;
+                } else if (i > 0 && dp[i][j] === dp[i-1][j] + 1) {
+                    // 삭제 (사용자가 추가한 문자)
+                    result.unshift({type: 'extra', char: userChars[i-1]});
+                    i--;
+                } else if (j > 0 && dp[i][j] === dp[i][j-1] + 1) {
+                    // 삽입 (사용자가 누락한 문자)
+                    result.unshift({type: 'missing', char: originalChars[j-1]});
+                    j--;
+                }
+            }
+            
+            return result;
+        }
+        
+        function displayDiff(diff) {
+            let html = '';
+            let currentSegment = '';
+            let currentType = null;
+            
+            diff.forEach((item, index) => {
+                if (item.type === currentType) {
+                    if (item.type === 'correct') {
+                        currentSegment += item.char;
+                    } else if (item.type === 'incorrect') {
+                        currentSegment += item.user;
+                    } else if (item.type === 'missing') {
+                        currentSegment += item.char;
+                    } else if (item.type === 'extra') {
+                        currentSegment += item.char;
+                    }
+                } else {
+                    // 이전 세그먼트 출력
+                    if (currentSegment && currentType) {
+                        html += `<span class="${currentType}">${escapeHtml(currentSegment)}</span>`;
+                    }
+                    
+                    // 새 세그먼트 시작
+                    currentType = item.type;
+                    if (item.type === 'correct') {
+                        currentSegment = item.char;
+                    } else if (item.type === 'incorrect') {
+                        currentSegment = item.user;
+                    } else if (item.type === 'missing') {
+                        currentSegment = item.char;
+                    } else if (item.type === 'extra') {
+                        currentSegment = item.char;
+                    }
+                }
+            });
+            
+            // 마지막 세그먼트 출력
+            if (currentSegment && currentType) {
+                html += `<span class="${currentType}">${escapeHtml(currentSegment)}</span>`;
+            }
+            
+            return html;
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
         function checkAnswer() {
             // 정답 확인 시 피드백 자동으로 켜기
             if (!feedbackEnabled) {
@@ -255,6 +412,14 @@
                 const userText = document.getElementById('userInput').value;
                 accuracy = calculateAccuracy(currentText, userText);
                 result = `정확도: ${accuracy.toFixed(1)}%`;
+                
+                // 틀린 부분 분석 표시
+                if (userText.trim()) {
+                    const diff = generateDiff(currentText, userText);
+                    const diffHtml = displayDiff(diff);
+                    document.getElementById('diffContainer').innerHTML = diffHtml;
+                    document.getElementById('diffResult').style.display = 'block';
+                }
             } else {
                 let correct = 0;
                 
@@ -276,6 +441,7 @@
                 
                 accuracy = (correct / blanksData.length) * 100;
                 result = `정답: ${correct}/${blanksData.length} (${accuracy.toFixed(1)}%)`;
+                document.getElementById('diffResult').style.display = 'none';
             }
             
             document.getElementById('result').innerHTML = `<h3>${result}</h3>`;
@@ -290,6 +456,7 @@
             document.getElementById('fullTest').style.display = 'none';
             document.getElementById('blankTest').style.display = 'none';
             document.getElementById('result').innerHTML = '';
+            document.getElementById('diffResult').style.display = 'none';
         }
         
         // 초기 설정
