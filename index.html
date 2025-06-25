@@ -246,7 +246,7 @@
                 const userAnswer = input.value.trim();
                 const correctAnswer = blank.answer;
                 
-                // 작은따옴표와 쉼표를 고려한 정답 확인
+                // 띄어쓰기를 무시하고 정답 확인
                 const isCorrect = isAnswerCorrect(userAnswer, correctAnswer);
                 
                 if (isCorrect) {
@@ -274,16 +274,20 @@
             document.getElementById('blankAccuracy').innerText = accuracy.toFixed(1) + '%';
         }
         
-        // 작은따옴표와 쉼표를 고려한 정답 확인 함수
+        // 띄어쓰기를 무시하고 정답 확인하는 함수 (수정됨)
         function isAnswerCorrect(userAnswer, correctAnswer) {
-            if (userAnswer === correctAnswer) return true;
+            // 띄어쓰기 제거
+            const userText = userAnswer.replace(/\s+/g, '');
+            const correctText = correctAnswer.replace(/\s+/g, '');
+            
+            if (userText === correctText) return true;
             
             // 길이가 다르면 false
-            if (userAnswer.length !== correctAnswer.length) return false;
+            if (userText.length !== correctText.length) return false;
             
             // 각 문자를 비교 (작은따옴표와 쉼표는 같은 것으로 처리)
-            for (let i = 0; i < userAnswer.length; i++) {
-                if (!charactersMatch(userAnswer[i], correctAnswer[i])) {
+            for (let i = 0; i < userText.length; i++) {
+                if (!charactersMatch(userText[i], correctText[i])) {
                     return false;
                 }
             }
@@ -476,6 +480,7 @@
                     const userAnswer = input.value.trim();
                     const correctAnswer = blank.answer;
                     
+                    // 띄어쓰기를 무시하고 정답 확인
                     if (isAnswerCorrect(userAnswer, correctAnswer)) {
                         correct++;
                         input.style.backgroundColor = '#c8e6c9';
