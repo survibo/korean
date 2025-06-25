@@ -136,6 +136,9 @@
             // 피드백이 켜지면 즉시 업데이트
             if (feedbackEnabled && currentMode === 'blank') {
                 updateBlankAccuracy();
+            } else if (!feedbackEnabled && currentMode === 'blank') {
+                // 피드백이 꺼지면 정확도도 숨기기
+                document.getElementById('blankAccuracy').innerText = '-';
             }
         }
         
@@ -209,6 +212,13 @@
             }
             
             document.getElementById('blankContainer').innerHTML = html;
+            
+            // 시작할 때 피드백 상태에 따라 정확도 초기화
+            if (feedbackEnabled) {
+                document.getElementById('blankAccuracy').innerText = '0%';
+            } else {
+                document.getElementById('blankAccuracy').innerText = '-';
+            }
         }
         
         function updateLiveAccuracy() {
@@ -223,6 +233,11 @@
         }
         
         function updateBlankAccuracy() {
+            // 피드백이 비활성화되어 있으면 정확도 업데이트하지 않음
+            if (!feedbackEnabled) {
+                return;
+            }
+            
             let correct = 0;
             let total = blanksData.length;
             
@@ -474,6 +489,9 @@
                 accuracy = (correct / blanksData.length) * 100;
                 result = `정답: ${correct}/${blanksData.length} (${accuracy.toFixed(1)}%)`;
                 document.getElementById('diffResult').style.display = 'none';
+                
+                // 정답 확인 후 정확도 표시 업데이트
+                document.getElementById('blankAccuracy').innerText = accuracy.toFixed(1) + '%';
             }
             
             document.getElementById('result').innerHTML = `<h3>${result}</h3>`;
